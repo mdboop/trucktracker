@@ -1,0 +1,9 @@
+
+#ignore dist dir
+dist/
+
+#ignore node modules
+node_modules/
+
+#ignore .env file
+.env
