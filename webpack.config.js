@@ -1,19 +1,27 @@
+var path = require('path');
 var webpack = require('webpack');
-var path = require('path');                // a useful node path helper library
 
-var config = {
-  entry: ['./app/app.js'],                // the entry point for our app
+module.exports = {
+  devtool: 'eval',
+  entry: [
+    'webpack-dev-server/client?http://localhost:8000',
+    'webpack/hot/only-dev-server',
+    './app/index'
+  ],
   output: {
-    path: path.resolve(__dirname, 'dist'), // store the bundled output in dist/bundle.js
-    filename: 'bundle.js'                  // specifying file name for our compiled assets
+    path: path.join(__dirname, 'dist'),
+    filename: 'bundle.js',
+    publicPath: '/static/'
   },
+  plugins: [
+    new webpack.HotModuleReplacementPlugin(),
+    new webpack.NoErrorsPlugin()
+  ],
   module: {
-    loaders: [
-      // telling webpack which loaders we want to use.  For now just run the
-      // code through the babel-loader.  'babel' is an alias for babel-loader
-      { test: /\.js$/, loaders: ['babel'], exclude: /node_modules/ }
-    ]
+    loaders: [{
+      test: /\.js$/,
+      loaders: ['react-hot', 'babel'],
+      include: path.join(__dirname, 'app')
+    }]
   }
-}
-
-module.exports = config;
+};
