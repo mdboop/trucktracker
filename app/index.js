@@ -33,8 +33,6 @@ class App extends Component {
 
     // Grab the day and hour. We'll need these to find where the trucks are and which are open
 
-    const day = new Date().getDay();
-    const hour = new Date().getHours();
 
     // Set up the first source stream from event and its loading message
 
@@ -47,12 +45,13 @@ class App extends Component {
         var address = encodeURI(document.querySelector('input').value);
         return DOM.ajax({
           url: `https://maps.googleapis.com/maps/api/geocode/json?address=${address}+San+Francisco&key=${GOOGLE_API_KEY}`,
-          method: 'GET'
+          method: 'GET',
+          headers: { "Allow-Access-Control-Origin": 'localhost:8000'}
         })
           .merge(addressLoadingMessage$);
     });
 
-    const addressLoading$ = addressRequest$.filter(req => req.loading !== undefined);
+    const addressLoadingStream = addressRequest$.filter(req => req.loading !== undefined);
 
     // We have fetched the geocoded address, and now need to filter out the loading message
 
@@ -71,55 +70,56 @@ class App extends Component {
 
     const request$ = locationClick$.concatMap(() => DOM.geolocation.getCurrentPosition().merge(locationMessage$));
 
-    var locationLoading$ = request$.filter(req => req.loading !== undefined);
+    const locationLoadingStream = request$.filter(req => req.loading !== undefined);
 
-    var locationResponse$ = request$
+    const locationResponse$ = request$
       .filter(res => !res.loading)
       .map(position => ({ lat: position.coords.latitude, lon: position.coords.longitude }));
 
-    //HERE IS WHERE WE MERGE THE TO LOC STREAMS;
-
+    // We have two streams that will produce the same output, an Observable of just { lat: _, lon: _ }
+    // Merge these two streams to pull the latest value
     const response$ = addressResponse$.merge(locationResponse$);
 
+
     const truckRequest$ = response$
+      .do(res => console.log(res))
       .concatMap(pos => {
-        var userPositionSource = Rx.Observable.just({ lat: pos.lat, lon: pos.lon });
-        var truckSource = DOM.ajax({
+        const day = new Date().getDay();
+        const userStream = Rx.Observable.just({ lat: pos.lat, lon: pos.lon });
+        const truckResultStream = DOM.ajax({
           url: `https://data.sfgov.org/resource/jjew-r69b.json?dayorder=${day}`,
           method: 'GET',
-          headers: {
-            'Access-Control-Allow-Origin': 'http://localhost:8000'
-          }
-        })
-
-        return Rx.Observable.combineLatest(userPositionSource, truckSource, (s1, s2) =>
-          ({ user: s1, trucks: s2.response }))
-          .merge(Rx.Observable.just({loading: 'Fetching the mobile food data...'}));
+          headers: { "Allow-Access-Control-Origin": 'localhost:8000'}
+        });
+        return Rx.Observable.combineLatest(userStream, truckResultStream, (userStream, truckResultStream) =>
+          ({ user: userStream, trucks: truckResultStream.response }))
+            .merge(Rx.Observable.just({loading: 'Fetching the mobile food data...'}));
       });
 
-    const truckLoading$ = truckRequest$.filter(req => req.loading !== undefined);
+    const truckLoadingStream = truckRequest$.filter(req => req.loading !== undefined);
 
     // Merge together all of the loading message streams.
 
-    var loadingMessages$ = Rx.Observable.merge(locationLoading$, truckLoading$, addressLoading$);
+    var loadingMessages$ = Rx.Observable.merge(locationLoadingStream, truckLoadingStream, addressLoadingStream);
 
     const truckResponse$ = truckRequest$
       .filter(pos => !pos.loading)
-      .map(data => {
-        return JSON.parse(data.trucks)
-        .map(truck => {
-
+      .concatMap(data => {
+        return Rx.Observable.from(JSON.parse(data.trucks))
+          // .filter(truck => {
+          //   const hour = new Date().getHours();
+          //   return parseInt(truck.end24.split(':')[0]) > hour;
+          // })
+          .map(truck => {
           var distance;
-
           if (truck.latitude && truck.longitude && data.user.lat && data.user.lon) {
             distance = getDistance(
               { latitude: parseFloat(truck.latitude), longitude: parseFloat(truck.longitude) },
               { latitude: data.user.lat, longitude: data.user.lon }
             );
           } else {
-            distance = ":-("
+            distance = null
           }
-
 
           var name = scrubName(truck.applicant)
 
@@ -131,7 +131,6 @@ class App extends Component {
             userLon: data.user.lon,
             distance: distance
           };
-
         });
       });
 
@@ -139,10 +138,11 @@ class App extends Component {
     truckResponse$.merge(loadingMessages$).subscribe(
       data => {
         if(data.loading) {
-          this.setState({loadingMessage: data.loading});
+          this.setState({ loadingMessage: data.loading, trucks: [] });
         } else {
+          console.log(data);
           this.setState({
-            trucks: data,
+            trucks: [data].concat(this.state.trucks),
             loadingMessage: null
           });
         }

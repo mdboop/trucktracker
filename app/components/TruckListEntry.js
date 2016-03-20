@@ -1,10 +1,11 @@
 import React from 'react';
 
 const TruckListEntry = (props) => {
+  const classType = props.closingSoon ? "truck-entry closing-soon" : "truck-entry";
   return (
-    <div className="truck-entry">
+    <div className={classType}>
       <p>{props.truck.applicant}</p>
-      <p>distance: {props.truck.distance}</p>
+      { props.truck.distance ? <p>distance: {props.truck.distance}</p> : <p>-</p> }
     </div>
   )
 }
